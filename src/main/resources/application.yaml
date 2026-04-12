@@ -1,0 +1,73 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pawnavz
+    username: postgres
+    password: 1234
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false   # ✅ FIXED POSITION
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 20
+
+  jackson:
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+
+  cache:
+    type: simple
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+  mvc:
+    throw-exception-if-no-handler-found: true
+
+  web:
+    resources:
+      add-mappings: false
+
+app:
+  jwt:
+    secret: dGhpcyBpcyBhIHZlcnkgbG9uZyBzZWNyZXQga2V5IGZvciBwYXduYXZ6IGp3dCB0b2tlbiBzaWduaW5n
+    access-token-expiry: 900000
+    refresh-token-expiry: 604800000
+
+aws:
+  s3:
+    bucket: pawnavz-dev
+    region: ap-south-1
+
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+    whitelabel:
+      enabled: false
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    try-it-out-enabled: true
+    operations-sorter: method
+
+logging:
+  level:
+    com.pawnavz: DEBUG
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
