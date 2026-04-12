@@ -1,8 +1,9 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/pawnavz
-    username: postgres
-    password: 1234
+    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
+    driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
@@ -41,7 +42,7 @@ spring:
 
 app:
   jwt:
-    secret: dGhpcyBpcyBhIHZlcnkgbG9uZyBzZWNyZXQga2V5IGZvciBwYXduYXZ6IGp3dCB0b2tlbiBzaWduaW5n
+    secret: ${JWT_SECRET}
     access-token-expiry: 900000
     refresh-token-expiry: 604800000
 
@@ -51,7 +52,7 @@ aws:
     region: ap-south-1
 
 server:
-  port: 8080
+  port: ${PORT:8080}
   error:
     include-message: always
     include-binding-errors: always
@@ -62,7 +63,7 @@ springdoc:
   api-docs:
     path: /v3/api-docs
   swagger-ui:
-    path: /swagger-ui.html
+    path: /swagger-ui/index.html
     try-it-out-enabled: true
     operations-sorter: method
 
