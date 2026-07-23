@@ -48,22 +48,41 @@ public class ProductService {
     /**
      * Location-aware catalog driven by the customer's own delivery address (never a
      * client-supplied PIN). Resolves the selected address (by id) or the default address,
-     * reads its PIN code, and returns the serving shop's products — or a
-     * "service unavailable" payload when no ACTIVE shop serves that PIN.
+     * reads its PIN code, resolves the single serving ACTIVE shop, then applies the optional
+     * filters to THAT shop's products only. Returns a "service unavailable" payload when no
+     * ACTIVE shop serves the PIN.
      */
-    public ProductAvailabilityResponse getProductsForDeliveryAddress(String userId, String addressId,
-                                                                     Pageable pageable) {
+    public ProductAvailabilityResponse getProductsForDeliveryAddress(
+            String userId, String addressId, String categoryId, String brand, String petType,
+            BigDecimal minPrice, BigDecimal maxPrice, String search, Pageable pageable) {
         Address address = resolveDeliveryAddress(userId, addressId);
         if (address == null) {
-            return ProductAvailabilityResponse.builder()
-                    .serviceAvailable(false)
-                    .message("Please add a delivery address to see products available near you.")
-                    .products(List.of())
-                    .page(pageable.getPageNumber())
-                    .size(pageable.getPageSize())
-                    .build();
+            return unavailable("Please add a delivery address to see products available near you.",
+                    null, pageable);
         }
-        return buildAvailabilityForPin(address.getPincode(), pageable);
+
+        String pinCode = address.getPincode();
+        Shop shop = serviceAvailabilityService.findServingShop(pinCode).orElse(null);
+        if (shop == null) {
+            return unavailable("Sorry! Pawnavz is not available in your area yet.", pinCode, pageable);
+        }
+
+        // Filters are scoped to the resolved shop only — never across shops.
+        Page<ShopProduct> shopProducts = shopProductRepository.findShopCatalog(
+                shop.getId(), blankToNull(categoryId), blankToNull(brand), blankToNull(petType),
+                minPrice, maxPrice, blankToNull(search), pageable);
+        List<ProductResponse> products = shopProducts.stream().map(this::mapShopProduct).toList();
+
+        return ProductAvailabilityResponse.builder()
+                .serviceAvailable(true)
+                .shopId(shop.getId())
+                .shopName(shop.getShopName())
+                .pinCode(pinCode)
+                .products(products)
+                .totalProducts(shopProducts.getTotalElements())
+                .page(shopProducts.getNumber())
+                .size(shopProducts.getSize())
+                .build();
     }
 
     /** Selected address takes precedence; otherwise the default, otherwise the most recent. */
@@ -78,33 +97,19 @@ public class ProductService {
                 .orElse(null);
     }
 
-    private ProductAvailabilityResponse buildAvailabilityForPin(String pinCode, Pageable pageable) {
-        Shop shop = serviceAvailabilityService.findServingShop(pinCode).orElse(null);
-        if (shop == null) {
-            return ProductAvailabilityResponse.builder()
-                    .serviceAvailable(false)
-                    .message("Sorry! Pawnavz is not available in your area yet.")
-                    .pinCode(pinCode)
-                    .products(List.of())
-                    .page(pageable.getPageNumber())
-                    .size(pageable.getPageSize())
-                    .build();
-        }
-
-        Page<ShopProduct> shopProducts =
-                shopProductRepository.findByShopIdAndAvailableTrue(shop.getId(), pageable);
-        List<ProductResponse> products = shopProducts.stream().map(this::mapShopProduct).toList();
-
+    private ProductAvailabilityResponse unavailable(String message, String pinCode, Pageable pageable) {
         return ProductAvailabilityResponse.builder()
-                .serviceAvailable(true)
-                .shopId(shop.getId())
-                .shopName(shop.getShopName())
+                .serviceAvailable(false)
+                .message(message)
                 .pinCode(pinCode)
-                .products(products)
-                .totalProducts(shopProducts.getTotalElements())
-                .page(shopProducts.getNumber())
-                .size(shopProducts.getSize())
+                .products(List.of())
+                .page(pageable.getPageNumber())
+                .size(pageable.getPageSize())
                 .build();
+    }
+
+    private String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value.trim();
     }
 
     public Page<ProductResponse> getProductsWithFilters(String categoryId, BigDecimal minPrice,

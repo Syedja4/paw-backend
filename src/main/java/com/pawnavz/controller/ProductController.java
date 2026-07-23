@@ -27,46 +27,43 @@ public class ProductController {
     private final JwtUtil jwtUtil;
 
     @GetMapping
-    @Operation(summary = "List products with optional filters")
-    public ResponseEntity<ApiResponse<Page<ProductResponse>>> getProducts(
-            @RequestParam(required = false) String categoryId,
-            @RequestParam(required = false) BigDecimal minPrice,
-            @RequestParam(required = false) BigDecimal maxPrice,
-            @RequestParam(required = false) String petType,
-            @RequestParam(required = false) String brand,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "createdAt") String sortBy,
-            @RequestParam(defaultValue = "desc") String sortDir) {
-
-        Sort sort = sortDir.equalsIgnoreCase("asc")
-                ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), sort);
-
-        boolean hasFilter = categoryId != null || minPrice != null
-                || maxPrice != null || petType != null || brand != null;
-
-        Page<ProductResponse> result = hasFilter
-                ? productService.getProductsWithFilters(categoryId, minPrice, maxPrice, petType, brand, pageable)
-                : productService.getAllProducts(pageable);
-
-        return ResponseEntity.ok(ApiResponse.success(result));
-    }
-
-    @GetMapping("/available")
-    @Operation(summary = "List products available at the customer's selected/default delivery address")
-    public ResponseEntity<ApiResponse<ProductAvailabilityResponse>> getAvailableProducts(
+    @Operation(summary = "List products from the shop serving the customer's selected/default "
+            + "delivery address, with optional filters applied to that shop only")
+    public ResponseEntity<ApiResponse<ProductAvailabilityResponse>> getProducts(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @RequestParam(required = false) String addressId,
+            @RequestParam(required = false) String categoryId,
+            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) String petType,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         if (auth == null || !auth.startsWith("Bearer ")) {
             throw new UnauthorizedException("Authentication required");
         }
         String userId = jwtUtil.extractUserId(auth.substring(7));
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by("createdAt").descending());
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100), parseSort(sort));
         return ResponseEntity.ok(ApiResponse.success(
-                productService.getProductsForDeliveryAddress(userId, addressId, pageable)));
+                productService.getProductsForDeliveryAddress(
+                        userId, addressId, categoryId, brand, petType, minPrice, maxPrice, search, pageable)));
+    }
+
+    /** Maps the public {@code sort} token to a safe, whitelisted Sort over shop-product fields. */
+    private Sort parseSort(String sort) {
+        if (sort == null || sort.isBlank()) {
+            return Sort.by("createdAt").descending();
+        }
+        return switch (sort.trim().toLowerCase()) {
+            case "price_asc" -> Sort.by("price").ascending();
+            case "price_desc" -> Sort.by("price").descending();
+            case "name_asc" -> Sort.by("product.name").ascending();
+            case "name_desc" -> Sort.by("product.name").descending();
+            case "oldest" -> Sort.by("createdAt").ascending();
+            default -> Sort.by("createdAt").descending();
+        };
     }
 
     @GetMapping("/{id}")

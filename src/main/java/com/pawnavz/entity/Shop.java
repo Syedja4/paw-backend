@@ -38,6 +38,6 @@ public class Shop extends BaseEntity {
     private ShopStatus status = ShopStatus.ACTIVE;
 
     public enum ShopStatus {
-        ACTIVE, INACTIVE
+        PENDING, ACTIVE, INACTIVE, SUSPENDED
     }
 }

@@ -47,7 +47,11 @@ public class AdminOrderService {
         return mapToResponse(findById(id));
     }
 
-    /** Routes an order to a shop for fulfillment. */
+    /**
+     * Manual override to (re)assign an order to a specific shop. Orders are normally
+     * auto-routed to a shop by delivery-address PIN at creation time
+     * (see OrderService + ServiceAvailabilityService); this endpoint only overrides that.
+     */
     @Transactional
     public OrderResponse assignShop(String orderId, AssignShopRequest request) {
         Order order = findById(orderId);

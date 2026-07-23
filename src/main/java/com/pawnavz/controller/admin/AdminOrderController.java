@@ -56,7 +56,8 @@ public class AdminOrderController {
     }
 
     @PatchMapping("/{id}/assign-shop")
-    @Operation(summary = "Route an order to a shop for fulfillment")
+    @Operation(summary = "Manual override: reassign an order to a different shop "
+            + "(orders are auto-routed by delivery PIN at creation)")
     public ResponseEntity<ApiResponse<OrderResponse>> assignShop(
             @PathVariable String id,
             @Valid @RequestBody AssignShopRequest request) {
