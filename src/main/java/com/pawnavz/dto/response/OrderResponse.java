@@ -25,11 +25,15 @@ public class OrderResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // Driver info (populated for admin/driver views)
-    private String driverId;
-    private String driverName;
-    private String driverPhone;
-    private String driverVehicleNumber;
+    // Fulfilling shop info (populated for admin/shop views)
+    private String shopId;
+    private String shopName;
+    private String shopPhone;
+
+    // Third-party delivery info (populated once delivery is requested)
+    private String deliveryPartner;
+    private String deliveryTrackingId;
+    private String deliveryStatus;
 
     // User info (populated for admin view)
     private String userId;

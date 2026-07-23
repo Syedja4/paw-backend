@@ -23,9 +23,10 @@ public class Order extends BaseEntity {
     @JoinColumn(name = "address_id")
     private Address deliveryAddress;
 
+    // Shop that fulfills this order. Null until an admin routes the order to a shop.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "driver_id")
-    private Driver driver;
+    @JoinColumn(name = "shop_id")
+    private Shop shop;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
@@ -67,6 +68,17 @@ public class Order extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    // ── Third-party delivery (Porter / Ola) integration fields ────────────────
+    // Populated when an admin requests delivery; kept provider-agnostic so a real
+    // Porter/Ola integration can be plugged in without schema changes.
+    @Enumerated(EnumType.STRING)
+    private DeliveryPartner deliveryPartner;
+
+    private String deliveryTrackingId;
+
+    @Enumerated(EnumType.STRING)
+    private DeliveryStatus deliveryStatus;
+
     public enum OrderStatus {
         PENDING, CONFIRMED, PROCESSING, SHIPPED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED, RETURNED
     }
@@ -77,5 +89,13 @@ public class Order extends BaseEntity {
 
     public enum PaymentMethod {
         COD, CARD, UPI, NET_BANKING, WALLET
+    }
+
+    public enum DeliveryPartner {
+        PORTER, OLA, MANUAL
+    }
+
+    public enum DeliveryStatus {
+        REQUESTED, ASSIGNED, PICKED_UP, DELIVERED, FAILED, CANCELLED
     }
 }

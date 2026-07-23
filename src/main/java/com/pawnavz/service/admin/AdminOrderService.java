@@ -1,14 +1,18 @@
 package com.pawnavz.service.admin;
 
-import com.pawnavz.dto.request.AssignDriverRequest;
+import com.pawnavz.delivery.DeliveryDispatchResult;
+import com.pawnavz.delivery.DeliveryService;
+import com.pawnavz.dto.request.AssignShopRequest;
+import com.pawnavz.dto.request.RequestDeliveryRequest;
 import com.pawnavz.dto.response.AddressResponse;
 import com.pawnavz.dto.response.OrderResponse;
-import com.pawnavz.entity.Driver;
 import com.pawnavz.entity.Order;
+import com.pawnavz.entity.OrderStatusHistory;
+import com.pawnavz.entity.Shop;
 import com.pawnavz.exception.BadRequestException;
 import com.pawnavz.exception.ResourceNotFoundException;
-import com.pawnavz.repository.DriverRepository;
 import com.pawnavz.repository.OrderRepository;
+import com.pawnavz.repository.ShopRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,105 +29,89 @@ import java.util.Optional;
 public class AdminOrderService {
 
     private final OrderRepository orderRepository;
-    private final DriverRepository driverRepository;
+    private final ShopRepository shopRepository;
+    private final DeliveryService deliveryService;
 
-    public Page<OrderResponse> getAllOrders(String status, String userId, String driverId,
+    public Page<OrderResponse> getAllOrders(String status, String userId, String shopId,
                                             LocalDateTime from, LocalDateTime to,
                                             Pageable pageable) {
-        System.out.println("ADMIN API HIT");
-        try {
-            Long parsedDriverId = parseDriverId(driverId);
-            Order.OrderStatus parsedStatus = parseStatus(status);
-            Page<Order> orders = orderRepository.findWithFilters(parsedStatus, userId, parsedDriverId, from, to, pageable);
-            return orders != null ? orders.map(this::mapToResponse) : Page.empty(pageable);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Page.empty(pageable);
-        }
+        String normalizedShopId = (shopId == null || shopId.isBlank()) ? null : shopId;
+        Order.OrderStatus parsedStatus = parseStatus(status);
+        String normalizedUserId = (userId == null || userId.isBlank()) ? null : userId;
+        Page<Order> orders = orderRepository.findWithFilters(
+                parsedStatus, normalizedUserId, normalizedShopId, from, to, pageable);
+        return orders.map(this::mapToResponse);
     }
 
     public OrderResponse getOrderById(String id) {
-        System.out.println("ADMIN API HIT");
-        try {
-            return mapToResponse(findById(id));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return emptyOrderResponse();
-        }
+        return mapToResponse(findById(id));
     }
 
+    /** Routes an order to a shop for fulfillment. */
     @Transactional
-    public OrderResponse assignDriver(String orderId, AssignDriverRequest request) {
-        System.out.println("ADMIN API HIT");
-        try {
-            Order order = findById(orderId);
-
-            Long parsedDriverId;
-            try {
-                parsedDriverId = Long.valueOf(request.getDriverId());
-            } catch (NumberFormatException e) {
-                throw new BadRequestException("Invalid driver id: " + request.getDriverId());
-            }
-
-            Driver driver = driverRepository.findById(parsedDriverId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Driver not found with id: " + request.getDriverId()));
-
-            if (!driver.isAvailable()) {
-                throw new BadRequestException("Driver is not available for assignment");
-            }
-
-            order.setDriver(driver);
-            order.setStatus(Order.OrderStatus.SHIPPED);
-            driver.setAvailable(false);
-            driverRepository.save(driver);
-            return mapToResponse(orderRepository.save(order));
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw e;
+    public OrderResponse assignShop(String orderId, AssignShopRequest request) {
+        Order order = findById(orderId);
+        Shop shop = shopRepository.findById(request.getShopId())
+                .orElseThrow(() -> new ResourceNotFoundException("Shop", request.getShopId()));
+        if (shop.getStatus() != Shop.ShopStatus.ACTIVE) {
+            throw new BadRequestException("Shop is not ACTIVE and cannot receive orders");
         }
+        order.setShop(shop);
+        order.getStatusHistory().add(OrderStatusHistory.builder()
+                .order(order).status(order.getStatus())
+                .description("Order routed to shop: " + shop.getShopName()).build());
+        return mapToResponse(orderRepository.save(order));
+    }
+
+    /**
+     * Requests a delivery from a third-party logistics partner (Porter/Ola).
+     * The actual provider call is delegated to {@link DeliveryService}, so wiring a
+     * real integration requires no change to this method.
+     */
+    @Transactional
+    public OrderResponse requestDelivery(String orderId, RequestDeliveryRequest request) {
+        Order order = findById(orderId);
+        if (order.getShop() == null) {
+            throw new BadRequestException("Assign the order to a shop before requesting delivery");
+        }
+        if (order.getStatus() != Order.OrderStatus.PROCESSING) {
+            throw new BadRequestException("Order must be PROCESSING (ready) before requesting delivery");
+        }
+
+        DeliveryDispatchResult result = (request != null && request.getPartner() != null)
+                ? deliveryService.requestDelivery(order, request.getPartner())
+                : deliveryService.requestDelivery(order);
+
+        order.setDeliveryPartner(result.getPartner());
+        order.setDeliveryTrackingId(result.getTrackingId());
+        order.setDeliveryStatus(result.getStatus());
+        order.setStatus(Order.OrderStatus.SHIPPED);
+        order.getStatusHistory().add(OrderStatusHistory.builder()
+                .order(order).status(Order.OrderStatus.SHIPPED)
+                .description("Delivery requested via " + result.getPartner()
+                        + " (tracking: " + result.getTrackingId() + ")").build());
+        return mapToResponse(orderRepository.save(order));
     }
 
     @Transactional
     public OrderResponse updateOrderStatus(String orderId, String statusStr) {
-        System.out.println("ADMIN API HIT");
+        Order order = findById(orderId);
+        Order.OrderStatus status;
         try {
-            Order order = findById(orderId);
-            Order.OrderStatus status;
-            try {
-                status = Order.OrderStatus.valueOf(statusStr.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new BadRequestException("Invalid status: " + statusStr +
-                        ". Valid values: PENDING, CONFIRMED, PROCESSING, SHIPPED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED, RETURNED");
-            }
-            order.setStatus(status);
-            if (status == Order.OrderStatus.DELIVERED || status == Order.OrderStatus.CANCELLED) {
-                if (order.getDriver() != null) {
-                    Driver driver = order.getDriver();
-                    driver.setAvailable(true);
-                    driverRepository.save(driver);
-                }
-            }
-            return mapToResponse(orderRepository.save(order));
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw e;
+            status = Order.OrderStatus.valueOf(statusStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid status: " + statusStr +
+                    ". Valid values: PENDING, CONFIRMED, PROCESSING, SHIPPED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED, RETURNED");
         }
+        order.setStatus(status);
+        order.getStatusHistory().add(OrderStatusHistory.builder()
+                .order(order).status(status).description("Status updated by admin").build());
+        return mapToResponse(orderRepository.save(order));
     }
 
     private Order findById(String id) {
         return orderRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + id));
-    }
-
-    private Long parseDriverId(String driverId) {
-        if (driverId == null || driverId.isBlank()) {
-            return null;
-        }
-        try {
-            return Long.valueOf(driverId);
-        } catch (NumberFormatException ex) {
-            throw new BadRequestException("Invalid driver id: " + driverId);
-        }
+                .orElseThrow(() -> new ResourceNotFoundException("Order", id));
     }
 
     private Order.OrderStatus parseStatus(String status) {
@@ -138,7 +126,7 @@ public class AdminOrderService {
     }
 
     private OrderResponse mapToResponse(Order order) {
-        Driver driver = order.getDriver();
+        Shop shop = order.getShop();
         return OrderResponse.builder()
                 .id(Optional.ofNullable(order.getId()).orElse(""))
                 .orderNumber(Optional.ofNullable(order.getOrderNumber()).orElse(""))
@@ -156,10 +144,12 @@ public class AdminOrderService {
                 .userId(order.getUser() != null ? Optional.ofNullable(order.getUser().getId()).orElse("") : "")
                 .userName(order.getUser() != null ? Optional.ofNullable(order.getUser().getName()).orElse("Unknown") : "Unknown")
                 .userPhone(order.getUser() != null ? Optional.ofNullable(order.getUser().getPhone()).orElse("") : "")
-                .driverId(driver != null ? String.valueOf(driver.getId()) : "")
-                .driverName(driver != null && driver.getUser() != null ? Optional.ofNullable(driver.getUser().getName()).orElse("") : "")
-                .driverPhone(driver != null && driver.getUser() != null ? Optional.ofNullable(driver.getUser().getPhone()).orElse("") : "")
-                .driverVehicleNumber(driver != null ? Optional.ofNullable(driver.getVehicleNumber()).orElse("") : "")
+                .shopId(shop != null ? Optional.ofNullable(shop.getId()).orElse("") : "")
+                .shopName(shop != null ? Optional.ofNullable(shop.getShopName()).orElse("") : "")
+                .shopPhone(shop != null ? Optional.ofNullable(shop.getPhone()).orElse("") : "")
+                .deliveryPartner(order.getDeliveryPartner() != null ? order.getDeliveryPartner().name() : "")
+                .deliveryTrackingId(Optional.ofNullable(order.getDeliveryTrackingId()).orElse(""))
+                .deliveryStatus(order.getDeliveryStatus() != null ? order.getDeliveryStatus().name() : "")
                 .createdAt(Optional.ofNullable(order.getCreatedAt()).orElse(LocalDateTime.now()))
                 .updatedAt(Optional.ofNullable(order.getUpdatedAt()).orElse(LocalDateTime.now()))
                 .build();
@@ -167,46 +157,10 @@ public class AdminOrderService {
 
     private AddressResponse emptyAddress() {
         return AddressResponse.builder()
-                .id("")
-                .label("")
-                .recipientName("")
-                .phone("")
-                .line1("")
-                .line2("")
-                .city("")
-                .state("")
-                .pincode("")
-                .country("")
+                .id("").label("").recipientName("").phone("").line1("").line2("")
+                .city("").state("").pincode("").country("")
                 .isDefault(Boolean.FALSE)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
-    }
-
-    private OrderResponse emptyOrderResponse() {
-        return OrderResponse.builder()
-                .id("")
-                .orderNumber("")
-                .status("")
-                .paymentStatus("")
-                .paymentMethod("")
-                .subtotal(BigDecimal.ZERO)
-                .deliveryCharge(BigDecimal.ZERO)
-                .discountAmount(BigDecimal.ZERO)
-                .totalAmount(BigDecimal.ZERO)
-                .deliveryAddress(emptyAddress())
-                .items(Collections.emptyList())
-                .timeline(Collections.emptyList())
-                .estimatedDelivery(LocalDateTime.now())
-                .userId("")
-                .userName("Unknown")
-                .userPhone("")
-                .driverId("")
-                .driverName("")
-                .driverPhone("")
-                .driverVehicleNumber("")
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
                 .build();
     }
 }

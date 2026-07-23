@@ -35,5 +35,7 @@ public class User extends BaseEntity {
 
     @Column(columnDefinition = "TEXT")
     private String refreshToken;
-    public enum Role { USER, ADMIN, DRIVER }
+    // DRIVER is retained only for backward compatibility with existing rows/tokens;
+    // the driver module has been removed. SHOP is used by shop-partner owners.
+    public enum Role { USER, ADMIN, DRIVER, SHOP }
 }

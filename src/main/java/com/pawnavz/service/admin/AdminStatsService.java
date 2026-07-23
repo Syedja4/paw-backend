@@ -1,10 +1,11 @@
 package com.pawnavz.service.admin;
 
 import com.pawnavz.entity.Order;
+import com.pawnavz.entity.Shop;
 import com.pawnavz.entity.User;
-import com.pawnavz.repository.DriverRepository;
 import com.pawnavz.repository.OrderRepository;
 import com.pawnavz.repository.ProductRepository;
+import com.pawnavz.repository.ShopRepository;
 import com.pawnavz.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,7 @@ import java.util.Optional;
 public class AdminStatsService {
 
     private final UserRepository userRepository;
-    private final DriverRepository driverRepository;
+    private final ShopRepository shopRepository;
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
 
@@ -33,7 +34,7 @@ public class AdminStatsService {
             LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
             Map<String, Object> stats = new LinkedHashMap<>();
             stats.put("totalUsers", safeLong(userRepository.countByRole(User.Role.USER)));
-            stats.put("totalDrivers", safeLong(driverRepository.count()));
+            stats.put("totalShops", safeLong(shopRepository.count()));
             stats.put("totalProducts", safeLong(productRepository.count()));
             stats.put("totalOrders", safeLong(orderRepository.count()));
             stats.put("pendingOrders", safeLong(orderRepository.countByStatus(Order.OrderStatus.PENDING)));
@@ -41,7 +42,7 @@ public class AdminStatsService {
             stats.put("outForDeliveryOrders", safeLong(orderRepository.countByStatus(Order.OrderStatus.OUT_FOR_DELIVERY)));
             stats.put("deliveredOrders", safeLong(orderRepository.countByStatus(Order.OrderStatus.DELIVERED)));
             stats.put("cancelledOrders", safeLong(orderRepository.countByStatus(Order.OrderStatus.CANCELLED)));
-            stats.put("availableDrivers", safeLong(driverRepository.countByAvailableTrue()));
+            stats.put("activeShops", safeLong(shopRepository.countByStatus(Shop.ShopStatus.ACTIVE)));
             stats.put("totalRevenue", safeAmount(orderRepository.sumTotalRevenue()));
             stats.put("revenueToday", safeAmount(orderRepository.sumRevenueSince(todayStart)));
             stats.put("ordersToday", safeLong(orderRepository.countByCreatedAtAfter(todayStart)));
@@ -122,7 +123,7 @@ public class AdminStatsService {
     private Map<String, Object> defaultOverview() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("totalUsers", 0L);
-        stats.put("totalDrivers", 0L);
+        stats.put("totalShops", 0L);
         stats.put("totalProducts", 0L);
         stats.put("totalOrders", 0L);
         stats.put("pendingOrders", 0L);
@@ -130,7 +131,7 @@ public class AdminStatsService {
         stats.put("outForDeliveryOrders", 0L);
         stats.put("deliveredOrders", 0L);
         stats.put("cancelledOrders", 0L);
-        stats.put("availableDrivers", 0L);
+        stats.put("activeShops", 0L);
         stats.put("totalRevenue", BigDecimal.ZERO);
         stats.put("revenueToday", BigDecimal.ZERO);
         stats.put("ordersToday", 0L);

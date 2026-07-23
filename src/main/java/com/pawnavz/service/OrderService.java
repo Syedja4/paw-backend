@@ -26,6 +26,7 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final ServiceAvailabilityService serviceAvailabilityService;
 
 
     @Transactional
@@ -37,6 +38,10 @@ public class OrderService {
         }
         Address address = addressRepository.findByIdAndUserId(request.getAddressId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address", request.getAddressId()));
+
+        // Verify Pawnavz serves the delivery PIN code and resolve the fulfilling shop.
+        Shop shop = serviceAvailabilityService.findServingShop(address.getPincode())
+                .orElseThrow(() -> new BadRequestException("Service is not available for this location."));
 
         BigDecimal subtotal = BigDecimal.ZERO;
         for (CartItem item : cart.getItems()) {
@@ -55,6 +60,7 @@ public class OrderService {
                         + UUID.randomUUID().toString().substring(0, 4).toUpperCase())
                 .user(userRepository.getReferenceById(userId))
                 .deliveryAddress(address)
+                .shop(shop)
                 .subtotal(subtotal).deliveryCharge(delivery).totalAmount(total)
                 .paymentMethod(request.getPaymentMethod())
                 .paymentStatus(Order.PaymentStatus.PENDING)

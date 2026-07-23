@@ -31,21 +31,25 @@ public interface OrderRepository extends JpaRepository<Order, String> {
             "LEFT JOIN FETCH o.statusHistory WHERE o.id = :id")
     Optional<Order> findByIdWithDetails(@Param("id") String id);
 
-    Page<Order> findByDriverIdOrderByCreatedAtDesc(Long driverId, Pageable pageable);
+    // ── shop-facing queries ───────────────────────────────────────────────
 
-    Optional<Order> findByIdAndDriverId(String id, Long driverId);
+    Page<Order> findByShopIdOrderByCreatedAtDesc(String shopId, Pageable pageable);
+
+    Page<Order> findByShopIdAndStatusOrderByCreatedAtDesc(String shopId, Order.OrderStatus status, Pageable pageable);
+
+    Optional<Order> findByIdAndShopId(String id, String shopId);
 
     // ── admin filter query ────────────────────────────────────────────────
 
     @Query("SELECT o FROM Order o WHERE " +
             "(:status IS NULL OR o.status = :status) AND " +
             "(:userId IS NULL OR o.user.id = :userId) AND " +
-            "(:driverId IS NULL OR o.driver.id = :driverId) AND " +
+            "(:shopId IS NULL OR o.shop.id = :shopId) AND " +
             "(:from IS NULL OR o.createdAt >= :from) AND " +
             "(:to IS NULL OR o.createdAt <= :to)")
     Page<Order> findWithFilters(@Param("status") Order.OrderStatus status,
                                 @Param("userId") String userId,
-                                @Param("driverId") Long driverId,
+                                @Param("shopId") String shopId,
                                 @Param("from") LocalDateTime from,
                                 @Param("to") LocalDateTime to,
                                 Pageable pageable);

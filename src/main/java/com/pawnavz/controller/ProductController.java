@@ -1,7 +1,10 @@
 package com.pawnavz.controller;
 
 import com.pawnavz.dto.response.ApiResponse;
+import com.pawnavz.dto.response.ProductAvailabilityResponse;
 import com.pawnavz.dto.response.ProductResponse;
+import com.pawnavz.exception.UnauthorizedException;
+import com.pawnavz.security.JwtUtil;
 import com.pawnavz.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +24,7 @@ import java.util.List;
 public class ProductController {
 
     private final ProductService productService;
+    private final JwtUtil jwtUtil;
 
     @GetMapping
     @Operation(summary = "List products with optional filters")
@@ -47,6 +51,22 @@ public class ProductController {
                 : productService.getAllProducts(pageable);
 
         return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/available")
+    @Operation(summary = "List products available at the customer's selected/default delivery address")
+    public ResponseEntity<ApiResponse<ProductAvailabilityResponse>> getAvailableProducts(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestParam(required = false) String addressId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (auth == null || !auth.startsWith("Bearer ")) {
+            throw new UnauthorizedException("Authentication required");
+        }
+        String userId = jwtUtil.extractUserId(auth.substring(7));
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by("createdAt").descending());
+        return ResponseEntity.ok(ApiResponse.success(
+                productService.getProductsForDeliveryAddress(userId, addressId, pageable)));
     }
 
     @GetMapping("/{id}")
