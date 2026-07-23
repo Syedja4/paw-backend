@@ -5,16 +5,15 @@ spring:
     password: ${PGPASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 3
+      minimum-idle: 1
       connection-timeout: 30000
 
   jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: update
     show-sql: false
-    open-in-view: false   # ✅ FIXED POSITION
+    open-in-view: false
     properties:
       hibernate:
         format_sql: true
@@ -52,7 +51,7 @@ aws:
     region: ap-south-1
 
 server:
-  port: ${PORT:8080}
+  port: ${PORT:8082}
   error:
     include-message: always
     include-binding-errors: always
@@ -69,6 +68,6 @@ springdoc:
 
 logging:
   level:
-    com.pawnavz: DEBUG
+    com.pawnavz: INFO
     org.springframework.security: WARN
     org.hibernate.SQL: WARN
